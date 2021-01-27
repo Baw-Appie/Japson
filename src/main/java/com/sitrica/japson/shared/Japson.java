@@ -30,7 +30,7 @@ public abstract class Japson {
 	protected final Set<Handler> handlers = new HashSet<>();
 	private final Set<Integer> ignored = new HashSet<>();
 
-	protected int PACKET_SIZE = 1024; // UDP standard
+	protected int PACKET_SIZE = 64000; // UDP standard
 	protected int TIMEOUT = 2000; // milliseconds
 	protected String password;
 	protected boolean debug;
