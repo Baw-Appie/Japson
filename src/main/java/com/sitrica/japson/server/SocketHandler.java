@@ -3,6 +3,7 @@ package com.sitrica.japson.server;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.Buffer;
 import java.util.concurrent.ExecutionException;
 
 import com.google.common.io.ByteArrayDataInput;
@@ -10,6 +11,7 @@ import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.sitrica.japson.shared.PacketInfo;
 import com.sitrica.japson.shared.ReceiverFuture;
 
 public class SocketHandler implements Runnable {
@@ -33,15 +35,16 @@ public class SocketHandler implements Runnable {
 				break;
 			try {
 				Socket sock = socket.accept();
-				DataInputStream input = new DataInputStream(sock.getInputStream());
+				ObjectInputStream input = new ObjectInputStream(sock.getInputStream());
 				DataOutputStream output = new DataOutputStream(sock.getOutputStream());
 
 				if (input == null) {
 					japson.getLogger().atSevere().log("Packet received was null or an incorrect readable object for Japson");
 					return;
 				}
-				int id = input.readInt();
-				String data = input.readUTF();
+				PacketInfo info = (PacketInfo) input.readObject();
+				int id = info.id;
+				String data = info.value;
 				if (data == null) {
 					japson.getLogger().atSevere().log("Received packet with id %s and the json was null.", id);
 					return;
@@ -72,7 +75,7 @@ public class SocketHandler implements Runnable {
 								japson.getLogger().atSevere().withCause(e).log("Failed to send return data %s.", json);
 							}
 						});
-			} catch (IOException e) {
+			} catch (IOException | ClassNotFoundException e) {
 				japson.getListeners().forEach(listener -> listener.onShutdown());
 			}
 		}

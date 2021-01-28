@@ -1,11 +1,9 @@
 package com.sitrica.japson.shared;
 
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.SocketException;
 import java.util.Collections;
 import java.util.HashSet;
@@ -121,18 +119,23 @@ public abstract class Japson {
 				socket.connect(socketAddress);
 
 				DataInputStream inputStream = new DataInputStream(socket.getInputStream());
-				OutputStream outputStream = socket.getOutputStream();
+				ObjectOutputStream outputStream = new ObjectOutputStream(socket.getOutputStream());
 
-				ByteArrayDataOutput out = ByteStreams.newDataOutput();
-				out.writeInt(japsonPacket.getID());
-				out.writeUTF(gson.toJson(japsonPacket.toJson()));
-				byte[] buf = out.toByteArray();
-				socket.setSoTimeout(TIMEOUT);
-				outputStream.write(buf);
+				String data = gson.toJson(japsonPacket.toJson());
+				PacketInfo packet = new PacketInfo(japsonPacket.getID(), data);
+				outputStream.writeObject(packet);
 				outputStream.flush();
 
+//				ByteArrayDataOutput out = ByteStreams.newDataOutput();
+//				out.writeInt(japsonPacket.getID());
+//				out.writeUTF(gson.toJson(japsonPacket.toJson()));
+//				byte[] buf = out.toByteArray();
+//				socket.setSoTimeout(TIMEOUT);
+//				outputStream.write(buf);
+//				outputStream.flush();
+
 				// Reset the byte buffer
-				buf = new byte[PACKET_SIZE];
+//				buf = new byte[PACKET_SIZE];
 				if (inputStream == null) {
 					logger.atSevere().log("Packet with id %s returned null or an incorrect readable object for Japson", japsonPacket.getID());
 					return null;
@@ -142,7 +145,7 @@ public abstract class Japson {
 					logger.atSevere().log("Sent returnable packet with id %s, but did not get correct packet id returned", japsonPacket.getID());
 					return null;
 				}
-				String json = input.readUTF();
+				String json = inputStream.readUTF();
 				if (debug && (ignored.isEmpty() || !ignored.contains(japsonPacket.getID())))
 					logger.atInfo().log("Sent returnable packet with id %s and recieved %s", japsonPacket.getID(), json);
 				return japsonPacket.getObject(new JsonParser().parse(json).getAsJsonObject());
@@ -186,16 +189,14 @@ public abstract class Japson {
 				InetSocketAddress socketAddress = new InetSocketAddress(address.getHostAddress(), port);
 				socket.connect(socketAddress);
 
-				DataInputStream inputStream = new DataInputStream(socket.getInputStream());
-				OutputStream outputStream = socket.getOutputStream();
+				ObjectOutputStream outputStream = new ObjectOutputStream(socket.getOutputStream());
 
-				ByteArrayDataOutput out = ByteStreams.newDataOutput();
-				out.writeInt(japsonPacket.getID());
 				String data = gson.toJson(japsonPacket.toJson());
-				out.writeUTF(data);
-				byte[] buf = out.toByteArray();
+				PacketInfo packet = new PacketInfo(japsonPacket.getID(), data);
+				outputStream.writeObject(packet);
+				outputStream.flush();
+
 				socket.setSoTimeout(TIMEOUT);
-				socket.send(new DatagramPacket(buf, buf.length, address, port));
 				if (debug && (ignored.isEmpty() || !ignored.contains(japsonPacket.getID())))
 					logger.atInfo().log("Sent non-returnable packet with id %s and data %s", japsonPacket.getID(), data);
 				socket.close();
