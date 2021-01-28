@@ -1,5 +1,6 @@
 package com.sitrica.japson.server;
 
+import java.io.IOException;
 import java.net.*;
 import java.util.Collections;
 import java.util.HashSet;
@@ -25,7 +26,7 @@ public class JapsonServer extends Japson {
 
 	private long RECONNECT = 5, EXPIRY = 10; // EXPIRY in minutes, DISCONNECT is amount.
 	private final Connections connections;
-	private final ServerSocket socket;
+	private ServerSocket socket = null;
 
 	private final Gson gson;
 
@@ -167,16 +168,22 @@ public class JapsonServer extends Japson {
 
 	public void shutdown() {
 		connections.shutdown();
-		socket.disconnect();
-		socket.close();
+		try {
+			socket.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 		handler.stop();
 		executor.shutdown();
 	}
 
 	public void kill() {
 		connections.kill();
-		socket.disconnect();
-		socket.close();
+		try {
+			socket.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 		handler.stop();
 		executor.shutdownNow();
 	}
