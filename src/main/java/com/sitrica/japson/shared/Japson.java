@@ -6,8 +6,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.SocketException;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -29,8 +29,9 @@ public abstract class Japson {
 	protected final FluentLogger logger = FluentLogger.forEnclosingClass();
 	protected final Set<InetAddress> acceptable = new HashSet<>();
 	protected final Set<Handler> handlers = new HashSet<>();
+	private final Set<Integer> ignored = new HashSet<>();
 
-	protected int PACKET_SIZE = 1024; // UDP standard
+	protected int PACKET_SIZE = 64000; // UDP standard
 	protected int TIMEOUT = 2000; // milliseconds
 	protected String password;
 	protected boolean debug;
@@ -84,12 +85,32 @@ public abstract class Japson {
 		return debug;
 	}
 
+	public final void addIgnoreDebugPackets(Integer... packets) {
+		ignored.addAll(Sets.newHashSet(packets));
+	}
+
+	public final Set<Integer> getIgnoredPackets() {
+		return Collections.unmodifiableSet(ignored);
+	}
+
+	public <T> T sendPacket(InetSocketAddress address, ReturnablePacket<T> packet) throws TimeoutException, InterruptedException, ExecutionException {
+		return sendPacket(address.getAddress(), address.getPort(), packet, new GsonBuilder()
+				.enableComplexMapKeySerialization()
+				.serializeNulls()
+				.setLenient()
+				.create());
+	}
+
 	public <T> T sendPacket(InetAddress address, int port, ReturnablePacket<T> packet) throws TimeoutException, InterruptedException, ExecutionException {
 		return sendPacket(address, port, packet, new GsonBuilder()
 				.enableComplexMapKeySerialization()
 				.serializeNulls()
 				.setLenient()
 				.create());
+	}
+
+	public <T> T sendPacket(InetSocketAddress address, ReturnablePacket<T> japsonPacket, Gson gson) throws TimeoutException, InterruptedException, ExecutionException {
+		return sendPacket(address.getAddress(), address.getPort(), japsonPacket, gson);
 	}
 
 	public <T> T sendPacket(InetAddress address, int port, ReturnablePacket<T> japsonPacket, Gson gson) throws TimeoutException, InterruptedException, ExecutionException {
@@ -121,11 +142,10 @@ public abstract class Japson {
 					logger.atSevere().log("Sent returnable packet with id %s, but did not get correct packet id returned", japsonPacket.getID());
 					return null;
 				}
-				String json = inputStream.readUTF();
-				socket.close();
-				if (debug)
+				String json = input.readUTF();
+				if (debug && (ignored.isEmpty() || !ignored.contains(japsonPacket.getID())))
 					logger.atInfo().log("Sent returnable packet with id %s and recieved %s", japsonPacket.getID(), json);
-				return japsonPacket.getObject(JsonParser.parseString(json).getAsJsonObject());
+				return japsonPacket.getObject(new JsonParser().parse(json).getAsJsonObject());
 			} catch (SocketException socketException) {
 				logger.atSevere().withCause(socketException)
 						.atMostEvery(15, TimeUnit.SECONDS)
@@ -139,12 +159,24 @@ public abstract class Japson {
 		}).get(TIMEOUT, TimeUnit.MILLISECONDS);
 	}
 
+	public void sendPacket(InetSocketAddress address, Packet japsonPacket) throws InterruptedException, ExecutionException, TimeoutException {
+		sendPacket(address.getAddress(), address.getPort(), japsonPacket, new GsonBuilder()
+				.enableComplexMapKeySerialization()
+				.serializeNulls()
+				.setLenient()
+				.create());
+	}
+
 	public void sendPacket(InetAddress address, int port, Packet japsonPacket) throws InterruptedException, ExecutionException, TimeoutException {
 		sendPacket(address, port, japsonPacket, new GsonBuilder()
 				.enableComplexMapKeySerialization()
 				.serializeNulls()
 				.setLenient()
 				.create());
+	}
+
+	public void sendPacket(InetSocketAddress address, Packet japsonPacket, Gson gson) throws InterruptedException, ExecutionException, TimeoutException {
+		sendPacket(address.getAddress(), address.getPort(), japsonPacket, gson);
 	}
 
 	public void sendPacket(InetAddress address, int port, Packet japsonPacket, Gson gson) throws InterruptedException, ExecutionException, TimeoutException {
@@ -159,15 +191,13 @@ public abstract class Japson {
 
 				ByteArrayDataOutput out = ByteStreams.newDataOutput();
 				out.writeInt(japsonPacket.getID());
-				out.writeUTF(gson.toJson(japsonPacket.toJson()));
+				String data = gson.toJson(japsonPacket.toJson());
+				out.writeUTF(data);
 				byte[] buf = out.toByteArray();
 				socket.setSoTimeout(TIMEOUT);
-
-				outputStream.write(buf);
-				outputStream.flush();
-
-				if (debug)
-					logger.atInfo().log("Sent non-returnable packet with id %s", japsonPacket.getID());
+				socket.send(new DatagramPacket(buf, buf.length, address, port));
+				if (debug && (ignored.isEmpty() || !ignored.contains(japsonPacket.getID())))
+					logger.atInfo().log("Sent non-returnable packet with id %s and data %s", japsonPacket.getID(), data);
 				socket.close();
 			} catch (SocketException socketException) {
 				logger.atSevere().withCause(socketException)
