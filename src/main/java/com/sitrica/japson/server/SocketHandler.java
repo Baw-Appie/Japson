@@ -75,6 +75,9 @@ public class SocketHandler implements Runnable {
 								japson.getLogger().atSevere().withCause(e).log("Failed to send return data %s.", json);
 							}
 						});
+				input.close();
+				output.close();
+				sock.close();
 			} catch (IOException | ClassNotFoundException e) {
 				japson.getListeners().forEach(listener -> listener.onShutdown());
 			}

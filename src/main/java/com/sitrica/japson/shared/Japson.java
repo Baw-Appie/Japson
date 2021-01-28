@@ -148,6 +148,9 @@ public abstract class Japson {
 				String json = inputStream.readUTF();
 				if (debug && (ignored.isEmpty() || !ignored.contains(japsonPacket.getID())))
 					logger.atInfo().log("Sent returnable packet with id %s and recieved %s", japsonPacket.getID(), json);
+				outputStream.close();
+				inputStream.close();
+				socket.close();
 				return japsonPacket.getObject(new JsonParser().parse(json).getAsJsonObject());
 			} catch (SocketException socketException) {
 				logger.atSevere().withCause(socketException)
@@ -199,6 +202,7 @@ public abstract class Japson {
 				socket.setSoTimeout(TIMEOUT);
 				if (debug && (ignored.isEmpty() || !ignored.contains(japsonPacket.getID())))
 					logger.atInfo().log("Sent non-returnable packet with id %s and data %s", japsonPacket.getID(), data);
+				outputStream.close();
 				socket.close();
 			} catch (SocketException socketException) {
 				logger.atSevere().withCause(socketException)
