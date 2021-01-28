@@ -1,9 +1,12 @@
 package com.sitrica.japson.shared;
 
+import java.io.DataInputStream;
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.SocketException;
 import java.util.HashSet;
 import java.util.Set;
@@ -91,29 +94,35 @@ public abstract class Japson {
 
 	public <T> T sendPacket(InetAddress address, int port, ReturnablePacket<T> japsonPacket, Gson gson) throws TimeoutException, InterruptedException, ExecutionException {
 		return CompletableFuture.supplyAsync(() -> {
-			try (DatagramSocket socket = new DatagramSocket()) {
+			try {
+				Socket socket = new Socket();
+				InetSocketAddress socketAddress = new InetSocketAddress(address.getHostAddress(), port);
+				socket.connect(socketAddress);
+
+				DataInputStream inputStream = new DataInputStream(socket.getInputStream());
+				OutputStream outputStream = socket.getOutputStream();
+
 				ByteArrayDataOutput out = ByteStreams.newDataOutput();
 				out.writeInt(japsonPacket.getID());
 				out.writeUTF(gson.toJson(japsonPacket.toJson()));
 				byte[] buf = out.toByteArray();
 				socket.setSoTimeout(TIMEOUT);
-				socket.send(new DatagramPacket(buf, buf.length, address, port));
+				outputStream.write(buf);
+				outputStream.flush();
+
 				// Reset the byte buffer
 				buf = new byte[PACKET_SIZE];
-				ByteArrayDataInput input = new ReceiverFuture(logger, this, socket)
-						.create(new DatagramPacket(buf, buf.length))
-						.get(TIMEOUT, TimeUnit.MILLISECONDS);
-				socket.close();
-				if (input == null) {
+				if (inputStream == null) {
 					logger.atSevere().log("Packet with id %s returned null or an incorrect readable object for Japson", japsonPacket.getID());
 					return null;
 				}
-				int id = input.readInt();
+				int id = inputStream.readInt();
 				if (id != japsonPacket.getID()) {
 					logger.atSevere().log("Sent returnable packet with id %s, but did not get correct packet id returned", japsonPacket.getID());
 					return null;
 				}
-				String json = input.readUTF();
+				String json = inputStream.readUTF();
+				socket.close();
 				if (debug)
 					logger.atInfo().log("Sent returnable packet with id %s and recieved %s", japsonPacket.getID(), json);
 				return japsonPacket.getObject(JsonParser.parseString(json).getAsJsonObject());
@@ -125,8 +134,6 @@ public abstract class Japson {
 				logger.atSevere().withCause(exception)
 						.atMostEvery(15, TimeUnit.SECONDS)
 						.log("IO error: " + exception.getMessage());
-			} catch (InterruptedException | ExecutionException | TimeoutException exception) {
-				// Already handled seperate.
 			}
 			return null;
 		}).get(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -142,13 +149,23 @@ public abstract class Japson {
 
 	public void sendPacket(InetAddress address, int port, Packet japsonPacket, Gson gson) throws InterruptedException, ExecutionException, TimeoutException {
 		CompletableFuture.runAsync(() -> {
-			try (DatagramSocket socket = new DatagramSocket()) {
+			try {
+				Socket socket = new Socket();
+				InetSocketAddress socketAddress = new InetSocketAddress(address.getHostAddress(), port);
+				socket.connect(socketAddress);
+
+				DataInputStream inputStream = new DataInputStream(socket.getInputStream());
+				OutputStream outputStream = socket.getOutputStream();
+
 				ByteArrayDataOutput out = ByteStreams.newDataOutput();
 				out.writeInt(japsonPacket.getID());
 				out.writeUTF(gson.toJson(japsonPacket.toJson()));
 				byte[] buf = out.toByteArray();
 				socket.setSoTimeout(TIMEOUT);
-				socket.send(new DatagramPacket(buf, buf.length, address, port));
+
+				outputStream.write(buf);
+				outputStream.flush();
+
 				if (debug)
 					logger.atInfo().log("Sent non-returnable packet with id %s", japsonPacket.getID());
 				socket.close();

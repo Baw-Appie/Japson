@@ -1,9 +1,6 @@
 package com.sitrica.japson.server;
 
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -28,7 +25,7 @@ public class JapsonServer extends Japson {
 
 	private long RECONNECT = 5, EXPIRY = 10; // EXPIRY in minutes, DISCONNECT is amount.
 	private final Connections connections;
-	private final DatagramSocket socket;
+	private final ServerSocket socket;
 
 	private final Gson gson;
 
@@ -60,8 +57,11 @@ public class JapsonServer extends Japson {
 		this.address = address;
 		this.port = port;
 		this.gson = gson;
-		this.socket = new DatagramSocket(port, address);
-		socket.setSoTimeout(TIMEOUT);
+		try {
+			this.socket = new ServerSocket(port);
+		} catch(Exception e) {
+
+		}
 		connections = new Connections(this);
 		handlers.add(connections);
 		handler = new SocketHandler(PACKET_SIZE, this, socket);
