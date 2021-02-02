@@ -31,54 +31,69 @@ public class SocketHandler implements Runnable {
 	@Override
 	public void run() {
 		while (running) {
-			if (socket.isClosed())
+			if (socket.isClosed()) {
+				System.out.println("Japson server is dead. Stopping SocketHandler.");
 				break;
+			}
 			try {
 				Socket sock = socket.accept();
-				ObjectInputStream input = new ObjectInputStream(sock.getInputStream());
-				DataOutputStream output = new DataOutputStream(sock.getOutputStream());
+				new Thread(new Runnable() {
+					@Override
+					public void run() {
+						try {
+							ObjectInputStream input = new ObjectInputStream(sock.getInputStream());
+							DataOutputStream output = new DataOutputStream(sock.getOutputStream());
 
-				if (input == null) {
-					japson.getLogger().atSevere().log("Packet received was null or an incorrect readable object for Japson");
-					return;
-				}
-				PacketInfo info = (PacketInfo) input.readObject();
-				int id = info.id;
-				String data = info.value;
-				if (data == null) {
-					japson.getLogger().atSevere().log("Received packet with id %s and the json was null.", id);
-					return;
-				}
-				if (japson.isDebug() && (japson.getIgnoredPackets().isEmpty() || !japson.getIgnoredPackets().contains(id)))
-					japson.getLogger().atInfo().log("Received packet with id %s and data %s", id, data);
-
-				// Handle
-				JsonObject object = new JsonParser().parse(data).getAsJsonObject();
-				japson.getHandlers().stream()
-						.filter(handler -> handler.getID() == id)
-						.map(handler -> handler.handle(sock.getInetAddress(), sock.getPort(), object))
-						.filter(jsonObject -> jsonObject != null)
-						.findFirst()
-						.ifPresent(jsonObject -> {
-							ByteArrayDataOutput out = ByteStreams.newDataOutput();
-							String json = japson.getGson().toJson(jsonObject);
-							out.writeInt(id);
-							out.writeUTF(json);
-							byte[] returnBuf = out.toByteArray();
-							try {
-								if (socket.isClosed())
-									return;
-								output.write(returnBuf);
-								if (japson.isDebug())
-									japson.getLogger().atInfo().log("Returning data %s as packet id %s", json, id);
-							} catch (IOException e) {
-								japson.getLogger().atSevere().withCause(e).log("Failed to send return data %s.", json);
+							if (input == null) {
+								japson.getLogger().atSevere().log("Packet received was null or an incorrect readable object for Japson");
+								return;
 							}
-						});
-				input.close();
-				output.close();
-				sock.close();
-			} catch (IOException | ClassNotFoundException e) {
+							PacketInfo info = (PacketInfo) input.readObject();
+							int id = info.id;
+							String data = info.value;
+							if (data == null) {
+								japson.getLogger().atSevere().log("Received packet with id %s and the json was null.", id);
+								return;
+							}
+							if (japson.isDebug() && (japson.getIgnoredPackets().isEmpty() || !japson.getIgnoredPackets().contains(id)))
+								japson.getLogger().atInfo().log("Received packet with id %s and data %s", id, data);
+
+							// Handle
+							JsonObject object = new JsonParser().parse(data).getAsJsonObject();
+							japson.getHandlers().stream()
+									.filter(handler -> handler.getID() == id)
+									.map(handler -> handler.handle(sock.getInetAddress(), sock.getPort(), object))
+									.filter(jsonObject -> jsonObject != null)
+									.findFirst()
+									.ifPresent(jsonObject -> {
+										ByteArrayDataOutput out = ByteStreams.newDataOutput();
+										String json = japson.getGson().toJson(jsonObject);
+										out.writeInt(id);
+										out.writeUTF(json);
+										byte[] returnBuf = out.toByteArray();
+										try {
+											if (socket.isClosed())
+												return;
+											output.write(returnBuf);
+											if (japson.isDebug())
+												japson.getLogger().atInfo().log("Returning data %s as packet id %s", json, id);
+										} catch (IOException e) {
+											japson.getLogger().atSevere().withCause(e).log("Failed to send return data %s.", json);
+										}
+									});
+							input.close();
+							output.close();
+							sock.close();
+						} catch (IOException | ClassNotFoundException e) {
+							System.out.println("Japson Error Occurred.");
+							e.printStackTrace();
+							japson.getListeners().forEach(listener -> listener.onShutdown());
+						}
+					}
+				}).start();
+			} catch (IOException e) {
+				System.out.println("Japson Error Occurred.");
+				e.printStackTrace();
 				japson.getListeners().forEach(listener -> listener.onShutdown());
 			}
 		}
